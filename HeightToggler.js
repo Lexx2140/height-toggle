@@ -4,14 +4,17 @@ export default class HeightToggler {
     return new HeightToggler(wrapper, options);
   }
 
-  constructor(wrapper, options = {
-    offset: 0,
-    duration: 0.3,
-    onUpdate: () => { }
-  }) {
+  constructor(wrapper, options = {}) {
+
+    const defaultOptions = {
+      offset: 0,
+      duration: 0.3,
+      expanded: false,
+      onUpdate: () => { }
+    };
 
     this.wrapper = wrapper;
-    this.options = options;
+    this.options = { ...defaultOptions, ...options };
 
     if (!this.wrapper) {
       throw new Error('No wrapper provided');
@@ -35,29 +38,26 @@ export default class HeightToggler {
       throw new Error('No [data-expand-height] provided');
     }
 
-    // Create a new ResizeObserver instance
-    this.resizeObserver = new ResizeObserver(() => {
-      this.setHeight();
-    });
-
-    // Observe changes to the container's size
-    this.resizeObserver.observe(this.container);
-
     this.toggleButton = this.wrapper.querySelector('[data-expand-button]');
     this.buttonTexts = [...this.toggleButton?.querySelectorAll('span.button-text')] || [];
-
     this.onUpdateCallback = options.onUpdate || (() => { });
 
     this.initialize();
   }
 
   initialize() {
-    const { duration, isExpanded } = this.options;
 
-    this.isExpanded = isExpanded || false;
-    this.container.style.transition = `max-height ${duration}s ease-in-out, clip-path ${duration}s ease-in-out`;
+    const { container, toggleButton } = this;
+    const { duration, expanded } = this.options;
 
-    this.toggleButton && this.toggleButton.addEventListener('click', () => this.toggleHeight());
+    this.isExpanded = expanded || false;
+    container.style.transition = `max-height ${duration}s ease-in-out, clip-path ${duration}s ease-in-out`;
+    container.style.overflow = 'hidden';
+
+    toggleButton && toggleButton.addEventListener('click', () => this.toggleHeight());
+    this.setHeight();
+
+    window.addEventListener('resize', () => this.setHeight());
   }
 
 
@@ -127,8 +127,6 @@ export default class HeightToggler {
     return { rows, rowHeights, gapHeight };
   }
 
-
-
   calculateHeight() {
     const { rowHeights, gapHeight } = this.calculateRowAndGapHeight();
 
@@ -151,62 +149,45 @@ export default class HeightToggler {
     };
   }
 
+  collapse() {
+    this.isExpanded = false;
+    this.setHeight();
+  }
+
+  expand() {
+    this.isExpanded = true;
+    this.setHeight();
+  }
 
   setHeight() {
-    const { container, toggleButton, isExpanded } = this;
+    const { container, toggleButton, buttonTexts, isExpanded, options } = this;
     const { collapsedHeight, expandedHeight } = this.calculateHeight();
 
-    const { offset } = this.options;
-
-    container.style.maxHeight = isExpanded ? `${expandedHeight + offset}px` : `${collapsedHeight}px`;
-
-    if (isExpanded) {
-      this.container.style.clipPath = `inset(-${offset}px)`;
-    } else {
-      this.container.style.clipPath = `inset(-${offset}px -${offset}px calc(100% - ${collapsedHeight}px) -${offset}px)`;
-    }
+    container.style.maxHeight = isExpanded ? `${expandedHeight + options.offset}px` : `${collapsedHeight}px`;
 
     toggleButton.classList.toggle('visible', expandedHeight > collapsedHeight);
     toggleButton.classList.toggle('expanded', isExpanded);
 
-    this.buttonTexts.length && this.buttonTexts.forEach(text => {
+    buttonTexts.length && buttonTexts.forEach(text => {
       text.textContent = isExpanded ? toggleButton.dataset?.closeTitle : toggleButton.dataset?.openTitle;
     });
 
     // Invoke onUpdate callback after setting height
-    this.onUpdateCallback({ isExpanded: isExpanded });
+    this.onUpdateCallback({ isExpanded });
   }
 
   toggleHeight() {
-    const { duration } = this.options;
     const wasExpanded = this.isExpanded;
     this.isExpanded = !this.isExpanded;
-
-    const delay = duration * 1000;
-
-    // Disconnect the ResizeObserver
-    this.resizeObserver.disconnect();
 
     // Store the current scroll position before expanding
     if (!wasExpanded) {
       this.previousScrollPosition = window.scrollY;
+    } else {
+      window.scrollTo({ top: this.previousScrollPosition, behavior: 'smooth' });
     }
 
     this.setHeight();
-
-    // Scroll to the top of the container when collapsing
-    if (wasExpanded) {
-      setTimeout(() => {
-        window.scrollTo({ top: this.previousScrollPosition, behavior: 'smooth' });
-      }, delay);
-    }
-
-    setTimeout(() => {
-      // Reconnect the ResizeObserver after setting the new height
-      this.resizeObserver.observe(this.container);
-
-    }, delay);
-
   }
 
 }
